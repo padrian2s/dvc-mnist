@@ -1,0 +1,5 @@
+md5: 8306c4f1b4ef661bc48085d80b7756f9
+outs:
+- cache: true
+  md5: f68b3c2dcbeaaa9fbdd348bbdeb94873
+  path: train-images-idx3-ubyte.gz
