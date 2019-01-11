@@ -1,0 +1,5 @@
+md5: c27084480f4ac14e364c831e5ce33450
+outs:
+- cache: true
+  md5: 119239ddacc5081bc57a0b4296558b76.dir
+  path: series-000001

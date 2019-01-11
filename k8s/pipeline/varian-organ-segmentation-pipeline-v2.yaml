@@ -1,0 +1,174 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: varian-organ-segmentation-
+spec:
+  entrypoint: organ-segmentation-dag
+  onExit: delete-cluster
+  arguments:
+    parameters:
+    - name: project
+    - name: region
+    - name: schema
+    - name: create-cluster-output
+    - name: azure-storage-connection-string
+    - name: azure-container-name
+  volumes:
+  - name: workdir
+    persistentVolumeClaim:
+      claimName: my-existing-volume2
+
+  templates:
+
+  - name: create-cluster
+    container:
+      args:
+      - --project
+      - '{{workflow.parameters.project}}'
+      - --region
+      - '{{workflow.parameters.region}}'
+      - --cluster
+      - '{{workflow.parameters.create-cluster-output}}'
+      - --schema
+      - '{{workflow.parameters.schema}}'
+      env:
+      - name: AZURE_K8S_CREDENTIALS
+        value: /secret/azure-credentials/user-azure-sa.json
+      image: microsoft/azure-cli
+      volumeMounts:
+      - mountPath: /mnt/vol
+        name: workdir
+
+  - name: delete-cluster
+    container:
+      args:
+      - --project
+      - '{{workflow.parameters.project}}'
+      - --region
+      - '{{workflow.parameters.region}}'
+      env:
+      - name: AZURE_K8S_CREDENTIALS
+        value: /secret/azure-credentials/user-azure-sa.json
+      image: microsoft/azure-cli
+      volumeMounts:
+      - mountPath: /mnt/vol
+        name: workdir
+
+  - name: prep-pip-volume
+    steps:
+    - - name: prepare-model-input
+        template: prep-pip
+        arguments:
+          parameters:
+          - name: azure-storage-connection-string
+            value: "{{workflow.parameters.azure-storage-connection-string}}"
+          - name: azure-container-name
+            value: "{{workflow.parameters.azure-container-name}}"
+    - - name: print
+        template: print-message
+
+  - name: prep-pip2
+    container:
+      image: docker/whalesay
+
+  - name: analyze
+    container:
+      image: docker/whalesay
+
+  - name: transform
+    container:
+      image: docker/whalesay
+
+  - name: train
+    container:
+      image: docker/whalesay
+
+  - name: predict
+    container:
+      image: docker/whalesay
+
+  - name: predict
+    container:
+      image: docker/whalesay
+
+  - name: hypertuning
+    container:
+      image: docker/whalesay
+
+  - name: serve
+    container:
+      image: docker/whalesay
+
+  - name: prep-pip
+    inputs:
+      parameters:
+      - name: azure-storage-connection-string
+      - name: azure-container-name
+    nodeSelector:
+      pre-pip: pre-pip
+    container:
+      image: padrian2s/pyjess
+      command: [sh, -c]
+      args: ["/opt/prep-pip/prep-pipeline.sh"]
+      # Mount workdir volume at /mnt/vol before invoking docker/whalesay
+      env:
+      - name: AZURE_STORAGE_CONNECTION_STRING
+        value: "{{inputs.parameters.azure-storage-connection-string}}"
+      - name: AZURE_STORAGE_CONTAINER_NAME
+        value: "{{inputs.parameters.azure-container-name}}"
+      volumeMounts:                     #same syntax as k8s Pod spec
+      - name: workdir
+        mountPath: /mnt/vol
+
+
+  - name: print-message
+    nodeSelector:
+      pre-pip: pre-pip
+    container:
+      image: alpine:latest
+      command: [sh, -c]
+      args: ["echo getting message from volume; find /mnt/vol;"]
+      # Mount workdir volume at /mnt/vol before invoking docker/whalesay
+      volumeMounts:                     #same syntax as k8s Pod spec
+      - name: workdir
+        mountPath: /mnt/vol
+
+  - name: organ-segmentation-dag
+    dag:
+      tasks:
+      - name: create-cluster
+        template: create-cluster
+        arguments:
+          parameters:
+          - name: message
+            value: x
+      - name: analyze
+        template: analyze
+        arguments:
+          parameters:
+          - name: azure-storage-connection-string
+            value: "{{workflow.parameters.azure-storage-connection-string}}"
+          - name: azure-container-name
+            value: "{{workflow.parameters.azure-container-name}}"
+        dependencies:
+          [create-cluster]
+      - name: transform
+        template: transform
+        dependencies:
+          [analyze, create-cluster]
+      - name: train
+        template: train
+        dependencies:
+          [analyze, create-cluster, transform]
+      - name: predict
+        template: predict
+        dependencies:
+          [train, analyze, create-cluster, transform]
+      - name: hypertuning
+        template: hypertuning
+        dependencies:
+          [predict]
+      - name: serve
+        template: prep-pip2
+        dependencies:
+          [predict]
